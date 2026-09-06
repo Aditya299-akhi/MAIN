@@ -9,22 +9,85 @@ from streamlit.components.v1 import html
 
 
 # ============================================================
-# CONFIG
+# PAGE CONFIG
+# ============================================================
+
+st.set_page_config(
+    page_title="Team Payment",
+    page_icon="💳",
+    layout="centered"
+)
+
+
+# ============================================================
+# LOAD ENVIRONMENT VARIABLES
 # ============================================================
 
 load_dotenv()
 
-RAZORPAY_KEY_ID = os.getenv("rzp_test_TYdM4HYUpyK0Iv")
-RAZORPAY_KEY_SECRET = os.getenv("VMAN5V7ruN1TFCGAfIsw0aI9")
 
-PRICE_PER_MEMBER = 50
+# ============================================================
+# GET RAZORPAY CREDENTIALS
+# ============================================================
 
+# Local:
+# Reads from .env
+#
+# Streamlit Cloud:
+# Reads from Streamlit Secrets
 
-if not RAZORPAY_KEY_ID or not RAZORPAY_KEY_SECRET:
-    st.error(
-        "Razorpay keys are missing. "
-        "Please check your .env file."
+try:
+
+    RAZORPAY_KEY_ID = st.secrets.get(
+        "RAZORPAY_KEY_ID",
+        os.getenv("RAZORPAY_KEY_ID")
     )
+
+    RAZORPAY_KEY_SECRET = st.secrets.get(
+        "RAZORPAY_KEY_SECRET",
+        os.getenv("RAZORPAY_KEY_SECRET")
+    )
+
+except Exception:
+
+    RAZORPAY_KEY_ID = os.getenv(
+        "RAZORPAY_KEY_ID"
+    )
+
+    RAZORPAY_KEY_SECRET = os.getenv(
+        "RAZORPAY_KEY_SECRET"
+    )
+
+
+# ============================================================
+# CHECK KEYS
+# ============================================================
+
+if not RAZORPAY_KEY_ID:
+
+    st.error(
+        "RAZORPAY_KEY_ID is missing."
+    )
+
+    st.info(
+        "For local testing, add it to .env. "
+        "For Streamlit Cloud, add it to App Settings → Secrets."
+    )
+
+    st.stop()
+
+
+if not RAZORPAY_KEY_SECRET:
+
+    st.error(
+        "RAZORPAY_KEY_SECRET is missing."
+    )
+
+    st.info(
+        "For local testing, add it to .env. "
+        "For Streamlit Cloud, add it to App Settings → Secrets."
+    )
+
     st.stop()
 
 
@@ -41,14 +104,10 @@ client = razorpay.Client(
 
 
 # ============================================================
-# PAGE CONFIG
+# CONSTANTS
 # ============================================================
 
-st.set_page_config(
-    page_title="Team Payment",
-    page_icon="💳",
-    layout="centered"
-)
+PRICE_PER_MEMBER = 50
 
 
 # ============================================================
@@ -59,17 +118,13 @@ st.markdown(
     """
     <style>
 
-    .main {
-        max-width: 700px;
-        margin: auto;
-    }
-
     .payment-card {
         background: white;
         padding: 30px;
         border-radius: 18px;
-        box-shadow: 0 10px 35px rgba(0,0,0,0.10);
-        margin-top: 30px;
+        box-shadow:
+            0 10px 35px
+            rgba(0, 0, 0, 0.10);
     }
 
     .test-mode {
@@ -78,11 +133,11 @@ st.markdown(
         padding: 12px;
         border-radius: 8px;
         text-align: center;
-        margin-bottom: 20px;
-        font-weight: 600;
+        margin: 15px 0 25px 0;
+        font-weight: bold;
     }
 
-    .price-box {
+    .summary {
         background: #f5f9ff;
         padding: 20px;
         border-radius: 12px;
@@ -113,9 +168,11 @@ st.write(
 
 
 st.markdown(
-    '<div class="test-mode">'
-    '⚠️ Razorpay TEST MODE'
-    '</div>',
+    """
+    <div class="test-mode">
+        ⚠️ RAZORPAY TEST MODE
+    </div>
+    """,
     unsafe_allow_html=True
 )
 
@@ -134,11 +191,11 @@ members = st.number_input(
 
 
 # ============================================================
-# CALCULATE
+# CALCULATE PRICE
 # ============================================================
 
 total_rupees = (
-    members * PRICE_PER_MEMBER
+    int(members) * PRICE_PER_MEMBER
 )
 
 total_paise = (
@@ -147,19 +204,21 @@ total_paise = (
 
 
 # ============================================================
-# SUMMARY
+# DISPLAY SUMMARY
 # ============================================================
 
 st.markdown(
     f"""
-    <div class="price-box">
+    <div class="summary">
 
         <p>
-            <b>Members:</b> {members}
+            <strong>Members:</strong>
+            {members}
         </p>
 
         <p>
-            <b>Price per member:</b> ₹{PRICE_PER_MEMBER}
+            <strong>Price per member:</strong>
+            ₹{PRICE_PER_MEMBER}
         </p>
 
         <hr>
@@ -178,7 +237,7 @@ st.write("")
 
 
 # ============================================================
-# CREATE RAZORPAY ORDER
+# CREATE ORDER
 # ============================================================
 
 if st.button(
@@ -190,8 +249,8 @@ if st.button(
     try:
 
         # IMPORTANT:
-        # Calculate amount on the server.
-        # Do not trust amount from frontend.
+        # Calculate amount on backend.
+        # Never trust amount supplied by browser.
 
         amount_paise = (
             int(members)
@@ -202,17 +261,20 @@ if st.button(
 
         order_data = {
 
-            "amount": amount_paise,
+            "amount":
+                amount_paise,
 
-            "currency": "INR",
+            "currency":
+                "INR",
 
             "receipt":
-                f"team_{int(members)}_{os.urandom(4).hex()}",
+                f"team_{int(members)}_"
+                f"{os.urandom(5).hex()}",
 
             "notes": {
 
                 "members":
-                    str(members),
+                    str(int(members)),
 
                 "price_per_member":
                     str(PRICE_PER_MEMBER)
@@ -222,18 +284,33 @@ if st.button(
         }
 
 
+        # Create Razorpay order
+
         order = client.order.create(
             data=order_data
         )
 
 
-        st.session_state["order_id"] = order["id"]
+        # Save order information
 
-        st.session_state["order_amount"] = order["amount"]
+        st.session_state[
+            "order_id"
+        ] = order["id"]
 
-        st.session_state["members"] = int(members)
 
-        st.session_state["payment_started"] = True
+        st.session_state[
+            "order_amount"
+        ] = order["amount"]
+
+
+        st.session_state[
+            "member_count"
+        ] = int(members)
+
+
+        st.session_state[
+            "show_checkout"
+        ] = True
 
 
         st.rerun()
@@ -242,7 +319,11 @@ if st.button(
     except Exception as e:
 
         st.error(
-            f"Unable to create Razorpay order: {e}"
+            "Could not create Razorpay order."
+        )
+
+        st.code(
+            str(e)
         )
 
 
@@ -251,18 +332,30 @@ if st.button(
 # ============================================================
 
 if st.session_state.get(
-    "payment_started",
+    "show_checkout",
     False
 ):
 
-    order_id = st.session_state["order_id"]
 
-    order_amount = st.session_state["order_amount"]
+    order_id = st.session_state[
+        "order_id"
+    ]
 
-    member_count = st.session_state["members"]
+
+    order_amount = st.session_state[
+        "order_amount"
+    ]
 
 
-    # HTML + JavaScript executed in browser
+    member_count = st.session_state[
+        "member_count"
+    ]
+
+
+    # --------------------------------------------------------
+    # RAZORPAY CHECKOUT HTML
+    # --------------------------------------------------------
+
     checkout_html = f"""
     <!DOCTYPE html>
 
@@ -270,73 +363,121 @@ if st.session_state.get(
 
     <head>
 
-        <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+        <meta charset="UTF-8">
+
+        <script
+            src="https://checkout.razorpay.com/v1/checkout.js">
+        </script>
+
+        <style>
+
+            body {{
+                font-family: Arial;
+                text-align: center;
+                padding: 10px;
+            }}
+
+            .info {{
+                color: #666;
+                font-size: 14px;
+            }}
+
+        </style>
 
     </head>
 
+
     <body>
+
+        <p class="info">
+            Opening Razorpay Checkout...
+        </p>
+
 
         <script>
 
             const options = {{
 
-                key: "{RAZORPAY_KEY_ID}",
+                key:
+                    "{RAZORPAY_KEY_ID}",
 
-                amount: {order_amount},
+                amount:
+                    {order_amount},
 
-                currency: "INR",
+                currency:
+                    "INR",
 
-                name: "My Team",
+                name:
+                    "My Team",
 
                 description:
                     "{member_count} team member(s)",
 
-                order_id: "{order_id}",
+                order_id:
+                    "{order_id}",
 
-                handler: function(response) {{
 
-                    const data = {{
+                handler:
+                    function(response) {{
 
-                        razorpay_order_id:
-                            response.razorpay_order_id,
+                        document.body.innerHTML = `
 
-                        razorpay_payment_id:
-                            response.razorpay_payment_id,
+                            <h3 style="color:green;">
+                                ✅ Payment Successful
+                            </h3>
 
-                        razorpay_signature:
-                            response.razorpay_signature
+                            <p>
+                                Payment ID:
+                                <br>
+                                <strong>
+                                    ${{response.razorpay_payment_id}}
+                                </strong>
+                            </p>
 
-                    }};
+                            <p>
+                                Order ID:
+                                <br>
+                                <strong>
+                                    ${{response.razorpay_order_id}}
+                                </strong>
+                            </p>
 
-                    // Send result to Streamlit
-                    window.parent.postMessage(
-                        {{
-                            type: "razorpay_payment_success",
-                            data: data
-                        }},
-                        "*"
-                    );
+                            <p>
+                                Payment signature received.
+                            </p>
 
-                }},
+                        `;
+
+                        console.log(
+                            "Payment response:",
+                            response
+                        );
+
+                    }},
+
 
                 modal: {{
 
-                    ondismiss: function() {{
+                    ondismiss:
+                        function() {{
 
-                        window.parent.postMessage(
-                            {{
-                                type: "razorpay_payment_closed"
-                            }},
-                            "*"
-                        );
+                            document.body.innerHTML = `
 
-                    }}
+                                <p>
+                                    Payment window closed.
+                                </p>
+
+                            `;
+
+                        }}
 
                 }},
 
+
                 theme: {{
 
-                    color: "#3399cc"
+                    color:
+                        "#3399cc"
 
                 }}
 
@@ -351,20 +492,20 @@ if st.session_state.get(
                 "payment.failed",
                 function(response) {{
 
-                    window.parent.postMessage(
-                        {{
-                            type: "razorpay_payment_failed",
+                    document.body.innerHTML = `
 
-                            data: {{
-                                code:
-                                    response.error.code,
+                        <h3 style="color:red;">
+                            ❌ Payment Failed
+                        </h3>
 
-                                description:
-                                    response.error.description
+                        <p>
+                            ${{response.error.description}}
+                        </p>
 
-                            }}
-                        }},
-                        "*"
+                    `;
+
+                    console.error(
+                        response.error
                     );
 
                 }}
@@ -383,79 +524,50 @@ if st.session_state.get(
 
     html(
         checkout_html,
-        height=100,
+        height=250,
         scrolling=False
     )
 
 
-    st.info(
-        "Razorpay Checkout is ready."
-    )
-
-
 # ============================================================
-# PAYMENT VERIFICATION FUNCTION
+# DEVELOPER INFORMATION
 # ============================================================
 
-def verify_payment(
-    order_id,
-    payment_id,
-    signature
+with st.expander(
+    "🔧 Developer Information"
 ):
-
-    message = (
-        order_id
-        + "|"
-        + payment_id
-    )
-
-
-    generated_signature = hmac.new(
-
-        RAZORPAY_KEY_SECRET.encode(),
-
-        message.encode(),
-
-        hashlib.sha256
-
-    ).hexdigest()
-
-
-    return hmac.compare_digest(
-        generated_signature,
-        signature
-    )
-
-
-# ============================================================
-# DEBUG INFORMATION
-# ============================================================
-
-with st.expander("Developer Information"):
 
     st.write(
         "Razorpay Key ID:",
         RAZORPAY_KEY_ID
     )
 
-    if st.session_state.get("order_id"):
+
+    if st.session_state.get(
+        "order_id"
+    ):
 
         st.write(
             "Order ID:",
-            st.session_state["order_id"]
+            st.session_state[
+                "order_id"
+            ]
         )
+
+
+    st.write(
+        "Members:",
+        int(members)
+    )
+
 
     st.write(
         "Price per member:",
         f"₹{PRICE_PER_MEMBER}"
     )
 
-    st.write(
-        "Current members:",
-        members
-    )
 
     st.write(
-        "Current amount:",
+        "Total:",
         f"₹{total_rupees}"
     )
